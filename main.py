@@ -4,6 +4,7 @@ import asyncio
 import httpx
 import time
 import json
+from datetime import datetime
 
 SERVER_IP = "194.5.157.250"
 SERVER_PORT = "13869"
@@ -51,8 +52,7 @@ async def main():
             try:
                 response = await client.post(
                     f"{BASE_URL}/camera/new",
-                    content=json.dumps({"number": camera_data, "trackTime": time.time()}),
-                    headers={"Content-Type": "application/json"},
+                    json={"number": camera_data, "trackTime": datetime.now().isoformat()},
                     timeout=5
                 )
                 print("Camera sent:", response.status_code)
