@@ -1,0 +1,56 @@
+from camera import camera_main
+from Ultrasensor import sensor
+
+import asyncio
+import httpx
+import time
+
+SERVER_IP = "xx.xxx.xx.xx"
+SERVER_PORT = "xxxx"
+BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/api"
+SLEEP_TIME = 1
+
+async def test_data():
+	results = await asyncio.gather(sensor(), camera_main())
+	sensor_data = results[0]
+	camera_data = results[1]
+	
+	print(f"Sensor data: {sensor_data}")
+	print(f"Camera data: {camera_data}")
+	print(f"Type of sensor data: {type(sensor_data)}")
+	print(f"Type of sensor data: {type(camera_data)}")
+
+async def main():
+	async with httpx.AsyncClient() as client:
+		while True:
+			results = await asyncio.gather(sensor(), camera_main())
+			sensor_data = results[0]
+			camera_data = results[1]
+			
+			# Send Ultrasound
+			try:
+				response = await client.post(
+					f"{BASE_URL}/ultrasound", 
+					json={"distance": sensor_data, "timestamp": time.time()},
+					timeout=5
+					)
+				print(f"Ultrasound sent: {response.status_code}")
+			except Exception as e:
+				print(f"Error sending ultrasound: {e}") 
+			
+			# Send Camera
+			try:
+				response = await client.post(
+					f"{BASE_URL}/camera", 
+					json={"people": camera_data, "timestamp": time.time()},
+					timeout=5
+					)
+				print(f"Camera sent: {response.status_code}")
+			except Exception as e:
+				print(f"Error sending camera: {e}") 
+			
+			await asyncio.sleep(SLEEP_TIME)
+
+if __name__ == "__main__":
+	asyncio.run(test_data())
+	#asyncio.run(main())
