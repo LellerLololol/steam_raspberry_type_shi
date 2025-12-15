@@ -51,7 +51,8 @@ async def main():
             try:
                 response = await client.post(
                     f"{BASE_URL}/camera/new",
-                    json={"number": camera_data, "trackTime": time.time()},
+                    content=json.dumps({"number": camera_data, "trackTime": time.time()}),
+                    headers={"Content-Type": "application/json"},
                     timeout=5
                 )
                 print("Camera sent:", response.status_code)
