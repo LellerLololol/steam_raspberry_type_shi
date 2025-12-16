@@ -95,6 +95,8 @@ int ultra_measure(int trigger_pin, int echo_pin) {
 
   int distance_mm = (duration_us * 343) / 2000;
 
+  printf("DEBUG: Distance measured: %d mm\n", distance_mm);
+
   return distance_mm;
 }
 
