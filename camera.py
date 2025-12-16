@@ -3,11 +3,10 @@ from ultralytics import YOLO
 import time
 import asyncio
 
-exit_key = "q"
+
 
 async def camera_main(queue):
-	model = YOLO("yolo11n.pt")
-	cv.startWindowThread() 
+	model = YOLO("yolo11n.pt") 
 
 	capture = cv.VideoCapture(0)
 	capture.set(cv.CAP_PROP_FRAME_WIDTH, 160)
@@ -28,7 +27,6 @@ async def camera_main(queue):
 		start_time = time.time()
 			
 		results = model(frame, imgsz=128, classes=[0], conf=0.42, verbose=False, device="cpu")
-		annotated_frame = results[0].plot()
 		
 		num_people = len(results[0].boxes)
 		#fps = 1 / (time.time() - start_time)
@@ -41,15 +39,11 @@ async def camera_main(queue):
 
 		await asyncio.sleep(0) # Yield control to event loop
 		
-		cv.imshow("frame", annotated_frame)
-		if cv.waitKey(1) == ord(exit_key):
-			break
+
 	
 
 if __name__ == "__main__":
-	print(f"Starting person detection... Press {exit_key} to quit")
+	print("Starting person detection...")
 	camera_main()
 	
 	capture.release()
-	cv.destroyAllWindows()
-	cv.waitKey(1)
