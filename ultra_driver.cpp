@@ -32,6 +32,7 @@ int ultra_init() {
   if (result < 0) {
     return result;
   }
+  printf("DEBUG: C++ ultra_init called\n");
   return 0;
 }
 
@@ -45,6 +46,8 @@ int ultra_init() {
 int ultra_measure(int trigger_pin, int echo_pin) {
   if (trigger_pin < 0 || echo_pin < 0)
     return -2; // Invalid pins
+
+  printf("DEBUG: C++ ultra_measure called\n");
 
   // Ensure mode is set (safe to call repeatedly)
   gpioSetMode(trigger_pin, PI_OUTPUT);
