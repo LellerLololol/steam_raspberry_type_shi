@@ -69,6 +69,7 @@ int ultra_measure(int trigger_pin, int echo_pin) {
   uint32_t start_wait = gpioTick();
   while (gpioRead(echo_pin) == 0) {
     if (gpioTick() - start_wait > 30000) {
+      printf("DEBUG: Timeout waiting for echo START (Echo did not go HIGH)\n");
       return -1; // Timeout waiting for echo start
     }
   }
@@ -77,7 +78,8 @@ int ultra_measure(int trigger_pin, int echo_pin) {
   // 3. Wait for Echo Low (End of pulse)
   // Same timeout
   while (gpioRead(echo_pin) == 1) {
-    if (gpioTick() - pulse_start > 30000) {
+    if (gpioTick() - start_wait > 30000) {
+      printf("DEBUG: Timeout waiting for echo END (Echo did not go LOW)\n");
       return -1; // Timeout waiting for echo to end (too far)
     }
   }
