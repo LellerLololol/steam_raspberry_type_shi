@@ -47,28 +47,27 @@ int ultra_measure(int trigger_pin, int echo_pin) {
   if (trigger_pin < 0 || echo_pin < 0)
     return -2; // Invalid pins
 
-  printf("DEBUG: C++ ultra_measure called\n");
+  printf("DEBUG: C++ ultra_measure called on Trig=%d, Echo=%d\n", trigger_pin,
+         echo_pin);
 
   // Ensure mode is set (safe to call repeatedly)
   gpioSetMode(trigger_pin, PI_OUTPUT);
   gpioSetMode(echo_pin, PI_INPUT);
 
-  // Ensure trigger is low first
+  // Ensure trigger is low first and wait a bit to clear any previous state
   gpioWrite(trigger_pin, 0);
-  // Short delay to settle? (2 micros is tiny)
-  gpioDelay(2);
+  gpioDelay(50); // 50us low to ensure clean start
 
-  // 1. Send Trigger Pulse (10 us)
+  // 1. Send Trigger Pulse (10 us min, let's do 15 to be safe)
   gpioWrite(trigger_pin, 1);
-  gpioDelay(10);
+  gpioDelay(15);
   gpioWrite(trigger_pin, 0);
 
   // 2. Wait for Echo High (Start of pulse)
-  // Timeout: 30ms (enough for ~5 meters)
-  // 30ms = 30000 us
+  // Give it a bit more time to start (e.g. 100ms or 100,000us is huge but safe)
   uint32_t start_wait = gpioTick();
   while (gpioRead(echo_pin) == 0) {
-    if (gpioTick() - start_wait > 30000) {
+    if (gpioTick() - start_wait > 100000) {
       printf("DEBUG: Timeout waiting for echo START (Echo did not go HIGH)\n");
       return -1; // Timeout waiting for echo start
     }
