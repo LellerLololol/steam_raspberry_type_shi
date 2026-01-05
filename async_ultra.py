@@ -1,102 +1,112 @@
 import asyncio
-import ctypes
-import pathlib
+import pigpio
 import time
 import statistics
 import logging
-from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class AsyncUltraSensor:
-    def __init__(self, trigger_pin=23, echo_pin=24, lib_path="ultra_driver.so"):
+    def __init__(self, trigger_pin=23, echo_pin=24):
         self.trigger_pin = trigger_pin
         self.echo_pin = echo_pin
-        self.lib_path = lib_path
-        self._executor = ThreadPoolExecutor(max_workers=1)
-        self._lib = None
-        self._load_library()
+        self.pi = pigpio.pi()
         
-    def _load_library(self):
-        """Load the C++ shared library."""
+        if not self.pi.connected:
+            logger.error("Could not connect to pigpiod. Is 'sudo pigpiod' running?")
+            raise RuntimeError("pigpio connection failed")
+
+        # Set up pins
+        self.pi.set_mode(self.trigger_pin, pigpio.OUTPUT)
+        self.pi.set_mode(self.echo_pin, pigpio.INPUT)
+        
+        # Internal state for measurement
+        self._tick_high = None
+        self._future = None
+        
+        # Set up callback for the echo pin
+        self._cb = self.pi.callback(self.echo_pin, pigpio.EITHER_EDGE, self._cbf)
+        logger.info(f"AsyncUltraSensor initialized on Trig={trigger_pin}, Echo={echo_pin}")
+
+    def _cbf(self, gpio, level, tick):
+        """Callback function for pigpio to capture edge timing."""
+        if level == 1:
+            self._tick_high = tick
+        else:
+            if self._tick_high is not None:
+                diff = pigpio.tickDiff(self._tick_high, tick)
+                if self._future and not self._future.done():
+                    self._future.set_result(diff)
+                self._tick_high = None
+
+    async def get_distance(self, timeout=0.1):
+        """
+        Trigger a measurement and wait for the echo pulse duration.
+        Returns distance in cm or None on timeout.
+        """
+        self._future = asyncio.get_running_loop().create_future()
+        
+        # Send 10us trigger pulse
+        self.pi.gpio_trigger(self.trigger_pin, 10, 1)
+        
         try:
-            full_path = pathlib.Path(__file__).parent / self.lib_path
-            logger.info(f"Loading library from: {full_path}")
-            self._lib = ctypes.CDLL(str(full_path))
+            # Wait for the callback to set the result
+            duration_us = await asyncio.wait_for(self._future, timeout=timeout)
             
-            # Setup return types and argument types
-            self._lib.ultra_init.restype = ctypes.c_int
-            self._lib.ultra_measure.argtypes = [ctypes.c_int, ctypes.c_int]
-            self._lib.ultra_measure.restype = ctypes.c_int
-            
-            # Initialize GPIO
-            res = self._lib.ultra_init()
-            if res < 0:
-                logger.error(f"Failed to initialize pigpio (error code {res})")
-                raise RuntimeError("pigpio initialization failed. Are you running with sudo?")
-            logger.info("pigpio initialized successfully.")
-            
-        except OSError as e:
-            logger.error(f"Could not load library {self.lib_path}: {e}")
-            logger.error("Did you run 'sh compile_driver.sh' first?")
-            raise
+            # Distance = (time * speed_of_sound) / 2
+            # 343 m/s = 0.0343 cm/us
+            distance_cm = (duration_us * 0.0343) / 2
+            return distance_cm
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            self._future = None
 
-    def d_measure_sync(self):
-        """Blocking call to C++ function (runs in < 40ms typically)."""
-        if not self._lib:
-            return -1
-        return self._lib.ultra_measure(self.trigger_pin, self.echo_pin)
-
-    async def get_distance(self):
+    async def get_filtered_distance(self, samples=5, delay=0.03):
         """
-        Get a single distance measurement asynchronously.
-        Returns distance in cm, or None if error.
-        """
-        loop = asyncio.get_running_loop()
-        # Run the C function in a separate thread to avoid blocking the asyncio event loop
-        dist_mm = await loop.run_in_executor(self._executor, self.d_measure_sync)
-        
-        if dist_mm < 0:
-            return None # Timeout or error
-            
-        return dist_mm / 10.0 # Convert mm to cm
-
-    async def get_filtered_distance(self, samples=5):
-        """
-        Get the median of 'samples' measurements to filter noise (garbage info).
+        Get the median of multiple measurements to filter noise.
         """
         readings = []
         for _ in range(samples):
             d = await self.get_distance()
-            if d is not None and 2.0 < d < 400.0: # Valid range 2cm - 400cm
+            if d is not None and 2.0 < d < 400.0:
                 readings.append(d)
-            # Small sleep between bursts to let echoes die down
-            await asyncio.sleep(0.01) 
+            await asyncio.sleep(delay)
             
         if not readings:
             return None
             
         return statistics.median(readings)
 
+    def cleanup(self):
+        """Stop the callback and disconnect from pigpio."""
+        if self._cb:
+            self._cb.cancel()
+        if self.pi:
+            self.pi.stop()
+
 async def main():
-    """Test function"""
+    """Local test loop"""
+    sensor = None
     try:
         sensor = AsyncUltraSensor(trigger_pin=23, echo_pin=24)
         print("Starting sensor loop... Press Ctrl+C to stop.")
         while True:
             dist = await sensor.get_filtered_distance(samples=3)
-            if dist:
+            if dist is not None:
                 print(f"Distance: {dist:.1f} cm")
             else:
-                print("Distance: --")
+                print("Distance: -- (Timeout or Out of Range)")
             await asyncio.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\nStopping...")
     except Exception as e:
         print(f"Error: {e}")
+    finally:
+        if sensor:
+            sensor.cleanup()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nStopped.")
+    asyncio.run(main())
