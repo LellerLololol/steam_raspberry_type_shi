@@ -49,8 +49,8 @@ async def main():
                 if sensor_data is not None:
                     try:
                         await client.post(
-                            f"{BASE_URL}/ultrasound",
-                            json={"distance": float(sensor_data), "trackTime": time.time()},
+                            f"{BASE_URL}/distance/new",
+                            json={"distance": float(sensor_data), "trackTime": datetime.now().isoformat()},
                             timeout=2
                         )
                     except Exception as e:
